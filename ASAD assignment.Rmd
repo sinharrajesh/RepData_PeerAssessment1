@@ -1,0 +1,377 @@
+---
+title: "ASADAssignment"
+author: "Rajesh Sinha (2016TC12033@wilp.bits-pilani.ac.in)"
+date: "21 September 2017"
+output: 
+  html_document:
+    toc: true
+    theme: united
+---
+Before we start anything, set a seed to the pseudo-random number generator so that our work is reproducible
+```{r, warning=FALSE}
+library(ggplot2)
+set.seed(100000)
+```
+
+# Question-1 : Implement Linear and Polynomial Regression for a Chosen Data Set
+We are going to be using __Skin Cancer Index data set__ in this response. This response has been knitted in R Markdown to HTML document.
+
+## Reading the dataset
+First we read the dataset from file assumed to be present in current directory. Then we analyze if to see whether it has any missing values or not.
+
+```{r, warning=FALSE, tidy=TRUE}
+library(ggplot2)
+setwd('~/')
+df <- read.csv(file='./SkinCancer.csv',header=TRUE,sep=",")
+```
+
+Lets check the data read and confirm how many rows and columns have been read and a sneak peak at data
+```{r}
+dim(df) # No of rows and columns
+head(df) # first few lines
+summary(df) # column wise summaries
+```
+
+Lets check and see if there are any missing values before we start the regression exercise
+```{r}
+sum(complete.cases(df)) == nrow(df) #is the no of complete rows same as rows of data frame
+```
+
+and some plots just to see how they look when compared individually
+```{r}
+plot(df$Usage.sun.screen.lotion, df$Skin.cancer.index)
+plot(df$Exp.to.sun, df$Skin.cancer.index)
+```
+
+and correlations
+```{r}
+cor(df$Exp.to.sun, df$Skin.cancer.index)
+cor(df$Usage.sun.screen.lotion, df$Skin.cancer.index)
+cor(df$Exp.to.sun, df$Usage.sun.screen.lotion)
+```
+
+from the plots and correlations we see that all three are positively correlated. Tne high correlation between exposure to sun and usage of sun screen lotion may suggest that we may not need both in linear regression model.
+
+## Linear Regression Model 
+Lets start with the Linear regression model first
+
+### Splitting into Test and Training datasets
+
+We will now split the data into 2 sets with 90% for training and 10% for testing
+```{r}
+df$rgroup <- runif(dim(df)[[1]]) # add a column which is sourced from a random no between 0 and 1
+dfTrain <- subset(df, rgroup <= 0.9) # all rows with this column <= 0.9 - get 90% rows
+dfTest <- subset(df, rgroup > 0.9) # all rows with column > 0.9 - get 10% rows
+```
+
+Just for checking the total number of rows in __dfTrain__ is __`r dim(dfTrain)[[1]]`__ and that of __dfTest__ is __`r dim(dfTest)[[1]]`__
+
+### Build the Linear Regression Model and populate predictions
+The command to build the linear model in R is lm(). The most important argument to $lm()$ is a formula with ~ used in place of an equal sign. The formula specifies what columns of the data frame is the quantity to the predicted and what columns are to be used to make the predictions. The following commands build the linear regression model and stores it in new object called $model$
+
+```{r,tidy=TRUE}
+model <- lm(Skin.cancer.index ~ Exp.to.sun + Usage.sun.screen.lotion, data=dfTrain)
+```
+
+We can now examine the Regression model coefficients
+```{r,tidy=TRUE}
+coefficients(model)
+```
+
+In other words the equalition is $Predicted Skin Cancer Index = `r model$coefficients[[1]]` + `r model$coefficients[[2]]` x Exp.to.sun + `r model$coefficients[[3]]` x Usage.sun.cream$
+
+Once the model is build, we predict the outcomes by adding an attribute on both the training and testing data
+```{r}
+dfTest$prediction <- predict(model, newdata=dfTest)
+dfTrain$prediction <- predict(model, newdata=dfTrain)
+```
+
+### Characterizing the Prediction Quality
+
+We plot the actual Skin Cance Index vs Predictions. If predictions are good, then the plot will be dots on or near the line y =x which we can call the line of perfect prediction
+
+```{r, tidy=TRUE}
+ggplot(data=dfTest, aes(x=prediction, y = Skin.cancer.index)) +
+  geom_point(alpha=0.2, color="black") +
+  geom_smooth(aes(x=prediction, y = Skin.cancer.index), color="black") +
+  geom_line(aes(x=prediction, y=Skin.cancer.index), color="blue", linetype=2)
+```
+
+From the above we can see that points are not widely scattered from this line - sign of good fit.
+
+We can also plot the residuals where the prediction error $prediction - Skin.cancer.index$ are plotted as a function of $prediction$. In this case the line of perfect prediction is the line y=0. 
+```{r, tidy=TRUE}
+ggplot(data=dfTest, aes(x=prediction, y = prediction - Skin.cancer.index)) +
+  geom_point(alpha=0.2, color="black") +
+  geom_smooth(aes(x=prediction, y = prediction - Skin.cancer.index), color="black")
+```
+
+from the above, we can see that the smoothing curve lie more or less along the line of perfect fit. The points lie close to that line. On an average the model predicts correctly but it underpredicts about at much as it overpredicts.
+
+
+### Linear Regression Model Characteristics
+
+```{r}
+summary(model)
+````
+from the above we can see that
+
+* we can explain __99.88%__ of variability in Skin.index.cancer based on the model which is a good thing
+* if we look at the p-values of the coefficient they all reject the Null Hypothesis and hence should be part of the linear regression model
+
+### Comparing R-squares in Train and test
+```{r}
+rsq <- function(y,f) { 1 - sum( (y-f)^2)/sum((y-mean(y))^2)}
+rsq(dfTrain$Skin.cancer.index, predict(model, newdata=dfTrain))
+rsq(dfTest$Skin.cancer.index, predict(model, newdata=dfTest))
+```
+
+we want R-Squared to be large (as close to 1) and similar on both test and training. From the result above it is clear that we have similar on both, Had it been high on train and low on test, it would have pointed to over-fitted model
+
+
+### Residuals summary
+In linear regression residuals is everything. Most of what we want to know about the quality of our model fit is in residuals. The residuals are the errors in prediction - $Skin.cancer.index - predict(model, newdata=DfTrain)$. We can find useful summaries of residuals for both test and training set as shown below
+```{r}
+summary(dfTrain$Skin.cancer.index - predict(model, newdata=dfTrain))
+summary(dfTest$Skin.cancer.index - predict(model, newdata=dfTest))
+```
+Linear regression works by choosing coeeficients to minimize the sum of squares of the residuals. Residuals should be small. What we hope for is the median near 0 and symmetry in 1st and 3rd Quartile. The quantiles are interesting because 1/2 of the training data has residual in this range. If we draw a randoom training sample, the residual will be in this range exactly 1/2 of the time. So we can expect to see prediction errors of these magnitudes using the above model. 
+
+
+### Only one attribute Linear Regression Models
+Given strong correlation between the two independent attributes, lets see individually how well they predict the cancer index
+
+```{r}
+summary(lm(dfTrain$Skin.cancer.index ~ dfTrain$Exp.to.sun))
+summary(lm(dfTrain$Skin.cancer.index ~ dfTrain$Usage.sun.screen.lotion))
+```
+So we can see 
+
+* using only single attribute is no good, as Exposure to sun explains 54% and 31% only
+* the residuals have degarded quite a lot in these models
+
+These two individual models do not beat the combined attribute linear model
+
+
+## Polynomial Regression Model
+
+while it is likely to be a waste of time, lets assume that we argue and see if we can fit a model like $predicted = \beta_0 + \beta_1 x1 + \beta_2 x1^2 + \beta_3 x^3 + \beta_4 y1 + \beta_5 y^2 + \beta_6 y^3$
+
+We can use $poly()$ function in R to model our X1 and X2 variables easily for this exercise.
+
+```{r}
+polymodel <- lm(dfTrain$Skin.cancer.index ~ poly(dfTrain$Exp.to.sun,3) + poly(dfTrain$Usage.sun.screen.lotion, 3))
+summary(polymodel)
+```
+
+From the above model it is very clear that
+
+* The R-squared values have not improved from simple linear model
+* the __p-values__ of the 2nd and 3rd coefficients i.e. $x^2$ $y^2$ $x^3$ $y^3$ are all supporting null hypothesis and should be discarded favouring a linear model itself.
+
+
+## Final Conclusions
+
+* The Linear Model is able to sufficiently model the Skin Cancer data set
+* The polynomial of order 3 does not add any advantage in this data set
+* The performance of Linear model in testing data is not different than training data
+* Residuals are sufficiently low for Linear model.
+* Linear regression model with 2 attributes has lower residuals and better Variance explanation than single attribute models
+
+
+# Question-2 : Implement Logistic Regression on Cancer Data Set
+
+We are going to be using __Cancer Data set__ in this response. Note the following with regards to Logistics Regression. Note that this is Winsconsin Breast Cancer data set where all data is factors (not continous)
+
+* LR is go to technique for binary classification. 
+* It has trouble dealing with very large number of vriables or categorical variables with large number of levels
+* It is well caliberated and reproduces the marginal probabilities of the data
+* It can predict well even in presence of correlated variables but correlated variables reduce the quality of advice
+* Overly large coefficient magnitudes, overly large std errors on coefficient estimates and wrong sign on a coefficient could be indications of correlated inputs
+* glm() in R provides a good diagnostic but rechecking model on test data is still most effective diagnostic
+
+
+## Reading the dataset
+First we read the dataset from file assumed to be present in current directory. Then we analyze if to see whether it has any missing values or not.
+
+```{r, warning=FALSE, tidy=TRUE}
+setwd('~/')
+df <- read.csv(file='./cancer-data.csv',header=TRUE,sep=",", na.strings="?" )
+#df[] <- lapply(df, factor)
+summary(df)
+sum(complete.cases(df)) == nrow(df)
+df <- df[complete.cases(df),]
+```
+
+we can see this has
+
+* 699 rows in total
+* we had missing values so lets use only the ones which are complete which is 683 in number
+* we will rename last column to Cancer.Type instead of NA. with 2 presumably meaning Benign and 4 meaning Malignant. Also since there are only two values (Bunary - 2 and 4 ) - we can just convert them to 1 and 0s in additional column and use that for prediction. We use a column called Is.Malignant as this binary column to ease out our work
+
+
+```{r, warning=FALSE, tidy=TRUE}
+colnames(df)[10] <- "Cancer.Type"
+df <- transform(df, Is.Malignant = ifelse( Cancer.Type == "4", 1, 0))
+tail(df)
+```
+
+we will split this into two sets for our use with 90% for training and 10% for testing.
+
+```{r}
+df$rgroup <- runif(dim(df)[[1]]) # add a column which is sourced from a random no between 0 and 1
+dfTrain <- subset(df, rgroup <= 0.9) # all rows with this column <= 0.9 - get 90% rows
+dfTest <- subset(df, rgroup > 0.9) # all rows with column > 0.9 - get 10% rows
+```
+Just for checking the total number of rows in __dfTrain__ is __`r dim(dfTrain)[[1]]`__ and that of __dfTest__ is __`r dim(dfTest)[[1]]`__
+
+
+### Build the Logistics Regression Model
+
+The command to build the logistics model in R is glm(). 
+
+```{r,tidy=TRUE}
+model <- glm(Is.Malignant ~ Thickness + Cell.Size + Cell.Shape + Marginal.Adhesion + Single.Epithelial.Cell.Size + Bare.Nuclei + Bland.Chromatin + Normal.Nucleoli + Mitoses, data = dfTrain, family = binomial(link='logit'))
+```
+
+### Making Predictions
+Making the predictions with glm() is similar to lm()
+```{r,tidy=TRUE}
+dfTrain$pred <- predict(model, newdata=dfTrain, type="response") 
+dfTest$pred <- predict(model, newdata=dfTest, type="response") 
+```
+Note the additional parameter response = this tells predict that you need to return the probabilies y. If we do not give this, it will return the outut of link() function logit(y)
+
+### Characterizing Prediction Quality
+On the training set we plot distribution of prediction score grouped by known outcome.
+
+```{r}
+ggplot(dfTrain, aes(x=pred, color=factor(Is.Malignant), linetype=factor(Is.Malignant))) + geom_density()
+```
+The result is shown in figure above. As we would have liked, the distribution of scores to be separated - the score of negative instances are concentrated to the left and the positive on the right. In order to use the model as classifier we need to pick a threshold - scores above that will qualify as positive (1 for Is.Malignant prediction or 0 otherwise). when we pick a threshold we balance precision and recall. Since the gap is so wide, we can pick a value of __0.40__ as threshold. We can evaluate the resulting classifier by looking at confusion matrix 
+
+```{r}
+ctab.test <- table(pred=dfTest$pred > 0.040, Is.Malignant=ifelse(dfTest$Is.Malignant == 1, TRUE, FALSE))
+ctab.test
+precision <- ctab.test[2,2]/sum(ctab.test[2,])
+precision
+recall <- ctab.test[2,2]/sum(ctab.test[,2])
+recall
+```
+
+Our model has good recall and precision at the same time.
+
+## Reading the Model summary
+```{r}
+summary(model)
+```
+
+
+### Deviance Residuals summary
+Deviance residuals are linked to the log likelihood of having observed the true outcome, given the predicted probability of that outcome. 
+
+### Coefficients 
+
+The coefficient of logistic regression model encode the relationships between the input variables and the output variables in a way similar to how the coefficients of a linear regression model do. 
+
+Negative coefficients that are statistically significant correspond to variables that are negatively correlated to the odds (and hence probability) of a positive outcome (i.e. Cancer is Malignant).
+Positive coefficients that are statistically significant are positively correlated to the odds of positive outcome. 
+
+Based on the above we can see that following increase the chances of Malignant cancer
+
+* Inceased Cell Thickness
+* Increased Marginal Adhesion
+* Increased Balnd Chromatin
+* Bare Nuclei sizes 10,4,5,3
+
+### Fischer Scoring Iterations
+We should expect gpm to converge in 6-8 iterations. Since the ones we have (17) is large, it is indicative of the fact that algorithm may not have converged or model may not be valid. One of the issues is that we have not made "factored" data for our data set - I observed that the algorithm is not converging when all columns are made factored. 
+
+#### Converting to Factors and reruning the whole show
+```{r, warning=FALSE, tidy=TRUE}
+setwd('~/')
+df <- read.csv(file='./cancer-data.csv',header=TRUE,sep=",",na.strings="?")
+df[] <- lapply(df, factor)
+summary(df)
+sum(complete.cases(df)) == nrow(df)
+df <- df[complete.cases(df),]
+colnames(df)[10] <- "Cancer.Type"
+df <- transform(df, Is.Malignant = ifelse( Cancer.Type == "4", 1, 0))
+tail(df)
+df$rgroup <- runif(dim(df)[[1]]) # add a column which is sourced from a random no between 0 and 1
+dfTrain <- subset(df, rgroup <= 0.9) # all rows with this column <= 0.9 - get 90% rows
+dfTest <- subset(df, rgroup > 0.9) # all rows with column > 0.9 - get 10% rows
+model <- glm(Is.Malignant ~ Thickness + Cell.Size + Cell.Shape + Marginal.Adhesion + Single.Epithelial.Cell.Size + Bare.Nuclei + Bland.Chromatin + Normal.Nucleoli + Mitoses, data = dfTrain, family = binomial(link='logit'))
+dfTrain$pred <- predict(model, newdata=dfTrain, type="response") 
+dfTest$pred <- predict(model, newdata=dfTest, type="response")
+ggplot(dfTrain, aes(x=pred, color=factor(Is.Malignant), linetype=factor(Is.Malignant))) + geom_density()
+ctab.test <- table(pred=dfTest$pred > 0.040, Is.Malignant=ifelse(dfTest$Is.Malignant == 1, TRUE, FALSE))
+ctab.test
+precision <- ctab.test[2,2]/sum(ctab.test[2,])
+precision
+recall <- ctab.test[2,2]/sum(ctab.test[,2])
+recall
+summary(model)
+```
+
+As is obvious from summary stats, this model is no good - it has very large number of iterations and not a single attribute which is beating the Null Hypothesis.
+
+
+# Question-3 : Time series analysis for NY Birth Data
+We are going to be using NY Birth data starting from January 1946 to December 1958 as per publicly available information about this data set from Internet. 
+
+## Reading the dataset
+First we read the dataset from file assumed to be present in current directory. 
+
+```{r, warning=FALSE, tidy=TRUE}
+setwd('~/')
+df <- read.csv(file='NYbirths.txt', header=FALSE, sep=",")
+summary(df)
+dim(df)
+```
+
+Given that this starting from January 1946, we can now use ts() object in R 
+```{r}
+df <- ts(df, frequency = 12, start = c(1946, 1))
+df
+```
+
+## Plot of Basic Time series
+Next we plot the time series to understand what components it it likely to have from Trend, Cyclic, Seasonal and Irregular.
+```{r}
+plot.ts(df)
+```
+There is certainly some seasonal variation in the number of births per month; there is a peak every summer, and a trough every winter. Again the it seems like this could be described using an additive model, as the seasonal fluctuations are roughly constant in size over time and do not seem to depend on the level of the time series, and the random fluctuations seem constant over time.
+
+
+## Decomposing the time series
+
+A seasonal time series, in addition to the trend and random components, also has a seasonal component. Decomposing a seasonal time series means separating the time series into these three components. In R we can use the decompose() function to estimate the three components of the time series.
+Lets estimate the trend, seasonal, and random components of the New York births dataset.
+
+```{r}
+dfdecomposed <- decompose(df)
+dfdecomposed
+```
+
+we can plot these as well by various components
+
+```{r}
+plot(dfdecomposed)
+```
+
+### Seasonal Adjustment
+If you have a seasonal time series, you can seasonally adjust the series by estimating the seasonal component, and subtracting it from the original time series. We can see below that time time series simply consists of the trend and random components.
+
+```{r}
+plot.ts(df - dfdecomposed$seasonal)
+```
+
+### Trend Adjustment
+If you have a seasonal time series, you can remove the trend component, and subtracting it from the original time series. We can see below that time time series simply consists of the seasonal and random components.
+
+```{r}
+plot.ts(df - dfdecomposed$trend - dfdecomposed$random)
+```
+
+
